@@ -31,19 +31,33 @@ class RedirectorPluginConfig extends PluginConfig
     {
         list ($__, $_N) = self::translate();
         return array(
-
+            'ri' => new SectionBreakField(array(
+                'label' => $__('Redirector Configuration')
+            )),
             'log' => new BooleanField(array(
                 'label' => $__('Show rewriting in logs'),
                 'hint' => $__("Enable to aid debugging, logs appear in Admin -> Dashboard -> System Logs (Log Level Debug), which you might have to enable in Admin -> Settings -> System -> Default Log Level.")
             )),
             'note' => new BooleanField(array(
                 'default' => TRUE,
-                'label' => $__('Show rewriting in ticket details.'),
-                'hint' => 'Can be useful to help trace message back through original.'
+                'label' => $__('Show rewriting'),
+                'hint' => $__('Adds the following note.')
+            )),
+            'note-text' => new TextareaField(array(
+                'default' => $__('Ticket modified upon receipt as it was forwarded to us.'),
+                'label' => $__('What to say in the note. '),
+                'hint' => $__('This get\'s prepended to message body')
+            )),
+            'di' => new SectionBreakField(array(
+                'label' => 'Permission'
             )),
             'domains' => new TextareaField(array(
-                'label' => $__('Domains to enable rewriting'),
-                'hint' => $__("Separate with a comma.")
+                'label' => $__('Rewritable Domains'),
+                'placeholder' => $__('Enter your trusted domain names, ie: company.com.tld'),
+                'hint' => $__("Separate with a comma if more than one required, not email addresses, full domains (the part after @).")
+            )),
+            'dr' => new SectionBreakField(array(
+                'label' => 'Drupal Contact Parser'
             )),
             'drupal' => new BooleanField(array(
                 'label' => $__('Rewrite Drupal Contact Form emails'),

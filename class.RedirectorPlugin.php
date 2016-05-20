@@ -12,14 +12,12 @@ class RedirectorPlugin extends Plugin
 
     public function bootstrap()
     {
-        if ($this->configGet()->get('enabled')) {
-            Signal::connect('mail.processed', function ($obj, $vars) {
-                // Sanity check before rewriting..
-                if (isset($vars['subject']) && isset($vars['email'])) {
-                    $vars = $this->rewrite($vars);
-                }
-            });
-        }
+        Signal::connect('mail.processed', function ($obj, $vars) {
+            // Sanity check before rewriting..
+            if (isset($vars['subject']) && isset($vars['email'])) {
+                $vars = $this->rewrite($vars);
+            }
+        });
     }
 
     /**
@@ -78,7 +76,7 @@ class RedirectorPlugin extends Plugin
                     $old_sender = $new['name'];
                     $new['name'] = $sender[1][0];
                     $new['email'] = $sender[2][0];
-                    $this->log( "Rewrote ticket details: $old_sender -> {$new['name']}");
+                    $this->log("Rewrote ticket details: $old_sender -> {$new['name']}");
                     if ($c->get('note')) {
                         $new['message'] = "Ticket modified upon receipt as it was sent from our website.\n\n$message_body";
                     }

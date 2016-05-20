@@ -32,11 +32,6 @@ class RedirectorPluginConfig extends PluginConfig
         list ($__, $_N) = self::translate();
         return array(
 
-            'enabled' => new BooleanField(array(
-                'default' => TRUE,
-                'label' => $__('Allow Rewriting'),
-                'hint' => $__("Allows messages to be rewritten to be from the original sender instead of the Forwarder.")
-            )),
             'log' => new BooleanField(array(
                 'label' => $__('Show rewriting in logs'),
                 'hint' => $__("Enable to aid debugging, logs appear in Admin -> Dashboard -> System Logs (Log Level Debug), which you might have to enable in Admin -> Settings -> System -> Default Log Level.")

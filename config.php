@@ -26,6 +26,7 @@ class RedirectorPluginConfig extends PluginConfig {
 	 */
 	function getOptions() {
 		list ( $__, $_N ) = self::translate ();
+		
 		return array (
 				'ri' => new SectionBreakField ( array (
 						'label' => $__ ( 'Rewriter Configuration' ) 

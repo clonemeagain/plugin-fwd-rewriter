@@ -25,7 +25,7 @@ class RedirectorPlugin extends Plugin {
 	 * 
 	 * @var boolean
 	 */
-	const DEBUG = TRUE;
+	const DEBUG = FALSE;
 	
 	/**
 	 * Hook the bootstrap process, wait for tickets to be created.

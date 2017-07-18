@@ -26,7 +26,7 @@ class RedirectorPluginConfig extends PluginConfig {
 	 */
 	function getOptions() {
 		list ( $__, $_N ) = self::translate ();
-		
+		// TODO: figure out the domain-name from $cfg->get('helpdesk_url').. except it's not available yet (in bootstrap cycle I mean)
 		return array (
 				'ri' => new SectionBreakField ( array (
 						'label' => $__ ( 'Rewriter Configuration' ) 

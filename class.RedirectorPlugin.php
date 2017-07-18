@@ -5,37 +5,47 @@ require_once ('config.php');
 /**
  * The goal of this Plugin is to modify tickets as they are being created.
  * Rewrite or Redirect them from the forwarding user to the actual Owner
- * 
- * For instance, using a webform or other to create your tickets via email, 
- * the "owner" of a ticket will be whomever email user you sent the email from, 
- * not the email address that was entered by the sender. 
- * 
- * This plugin allows you to rewrite the ticket details transparently to osTicket. 
- * 
+ *
+ * For instance, using a webform or other to create your tickets via email,
+ * the "owner" of a ticket will be whomever email user you sent the email from,
+ * not the email address that was entered by the sender.
+ *
+ * This plugin allows you to rewrite the ticket details transparently to osTicket.
  */
 class RedirectorPlugin extends Plugin {
+	/**
+	 * Which config class to load
+	 *
+	 * @var string
+	 */
 	var $config_class = 'RedirectorPluginConfig';
-	const DEBUG = FALSE;
+	
+	/**
+	 * Set to TRUE to enable webserver logging
+	 * 
+	 * @var boolean
+	 */
+	const DEBUG = TRUE;
 	
 	/**
 	 * Hook the bootstrap process, wait for tickets to be created.
 	 *
-	 * Run on every isntantiation, so needs to be concise.
+	 * Run on every instantiation, so needs to be concise.
 	 *
 	 * {@inheritdoc}
 	 *
 	 * @see Plugin::bootstrap()
 	 */
 	public function bootstrap() {
+		
+		// Listen for new tickets being created:
 		Signal::connect ( 'ticket.create.before', function ($obj, &$vars) {
 			$this->process_ticket ( $vars );
 		} );
 	}
 	
 	/**
-	 * Takes a new message array of variables
-	 *
-	 * Checks to see if it matches the normal "Forwarded Message" attributes..
+	 * Takes an array of variables and checks to see if it matches the normal "Forwarded Message" attributes..
 	 *
 	 * Need to find the earliest sender combo in the array.
 	 * There could be quite a chain
@@ -50,10 +60,10 @@ class RedirectorPlugin extends Plugin {
 	 * Which, in this case, is the LAST one.
 	 *
 	 * There is apparently no RFC for forwarded messages (as per: http://stackoverflow.com/a/4743303)
-	 * 
-	 * @param array $vars
+	 *
+	 * @param array $vars        	
 	 */
-	private function process_ticket(&$vars) {		
+	private function process_ticket(&$vars) {
 		// Retrieve the text from the ThreadEntryBody, as per v1.10
 		$message_body = $vars ['message']->getClean ();
 		
@@ -86,7 +96,7 @@ class RedirectorPlugin extends Plugin {
 			// From: "Name" <"User@Email">
 			// Which most forwarded messages seem to have.
 			$sender = array ();
-			if (preg_match_all ( '/From: (.+) <(.*)>/i', $matchable_body, $sender ) != false) {
+			if (preg_match_all ( '/From: (.+) <(.+?)>/i', $matchable_body, $sender ) != false) {
 				return $this->rewrite ( $vars, $sender );
 			} else {
 				// Disaster, it is definitely a forwarded message, yet we can't find the details inside it.
@@ -113,16 +123,20 @@ class RedirectorPlugin extends Plugin {
 	 * The structure we are expecting back from either preg_match_all will be a 2-level array $matches
 	 * $matches[1][..] == 'Names'
 	 * $matches[2][..] == 'Email addresses'
-	 * 
+	 *
 	 * Now, to find the LAST one.. we look at the end of the array
 	 *
 	 * @param array $vars        	
-	 * @param array $matches  (output from preg_match_all with two capture groups name/email in that order)
+	 * @param array $matches
+	 *        	(output from preg_match_all with two capture groups name/email in that order)
 	 */
 	private function rewrite(array &$vars, array $matches) {
 		// Check for valid data.
 		if (! isset ( $matches [1] [0] ) || ! isset ( $matches [2] [0] )) {
-			return $vars; // Bail.
+			if (self::DEBUG)
+				error_log ( "Unable to match with this invalid data, check the regex? check the domains? something borked." );
+			
+			return; // Bail.
 		}
 		// Get the last entry in each array as the proposed "Original Sender" of the first message in the chain.
 		$original_name = array_pop ( $matches [1] );
@@ -130,12 +144,13 @@ class RedirectorPlugin extends Plugin {
 		
 		// The current details of the soon-to-be-ticket
 		$current_sender_name = $vars ['name'];
-		$current_sender_email = $vars ['email']; //TODO: validate email using osTicket validator? either way, User::fromVars will do it.
-		
+		$current_sender_email = $vars ['email']; // We don't validate email because User::fromVars will do it
+		                                         
 		// Verify that the new email isn't the same as the current one, no point rewriting things if it's the same.
-		// We can't help you there mate, either it's one big circle-jerk of a forward, or someone's deleted the data we need.
 		if ($original_email == $current_sender_email) {
-			return $vars;
+			if (self::DEBUG)
+				error_log ( "The forwarded message is from the same person, they forwarded to themselves? bailing" );
+			return;
 		}
 		
 		// All Good? We're ready!
@@ -150,23 +165,27 @@ class RedirectorPlugin extends Plugin {
 		
 		// See if admin want's us to add a note about this in the message. (Ticket hasn't been created yet, so can't add an Admin Note to the thread)
 		if ($this->getConfig ()->get ( 'note' )) {
-			
-			// Add admin configurable message for note.
-			$vars ['message']->body = $this->getConfig ()->get ( 'note-text' ) . "\n\n" . $vars ['message']->getClean ();
+			$original_text = $vars ['message']->getClean ();
+			$admin_note = $this->getConfig ()->get ( 'note-text' ) . "\n\n";
+			$vars ['message']->body = $admin_note . $original_text;
 		}
 	}
 	
 	/**
-	 * Private logging function,
+	 * Logging function,
 	 * Ensures we have permission to log before doing so
 	 *
 	 * Logs to the Admin logs, and to the webserver logs.
 	 *
-	 * @param unknown $message        	
+	 * @param string $message        	
 	 */
 	private function log($message) {
 		global $ost;
-		if ($this->configGet ()->get ( 'log' )) {
+		static $can_log;
+		if (! isset ( $can_log ))
+			$can_log = $this->configGet ()->get ( 'log' );
+		
+		if ($can_log && $message) {
 			$ost->logDebug ( "RedirectPlugin", $message );
 			if (self::DEBUG)
 				error_log ( "osTicket RedirectPlugin: $message" );

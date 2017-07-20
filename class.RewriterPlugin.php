@@ -158,7 +158,7 @@ class RewriterPlugin extends Plugin
                 // Disaster, it is definitely a forwarded message, yet we can't find the details inside it.
                 $this->log("Unable to rewrite $subject, No 'From: {name} <{email}>' found.");
             }
-        } elseif ($c->get('drupal') && preg_match('/sent a message using the contact form at/i', $message_body)) {
+        } elseif ($this->getConfig()->get('drupal') && preg_match('/sent a message using the contact form at/i', $message_body)) {
             
             // The message body indicates it could be sent from a Drupal /contact form
             // Luckily the default is PlainText (for Drupal 7 and lower at least)
@@ -173,6 +173,8 @@ class RewriterPlugin extends Plugin
                 return $this->rewrite($vars, $sender);
             }
         }
+        // not a match if it reaches here. 
+        //todo: arbitrary rewriting!
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 require_once INCLUDE_DIR . 'class.plugin.php';
-class RedirectorPluginConfig extends PluginConfig {
+class RewriterPluginConfig extends PluginConfig {
 	// Provide compatibility function for versions of osTicket prior to
 	// translation support (v1.9.4)
 	function translate() {
@@ -14,7 +14,7 @@ class RedirectorPluginConfig extends PluginConfig {
 					} 
 			);
 		}
-		return Plugin::translate ( 'redirector' );
+		return Plugin::translate ( 'rewriter' );
 	}
 	
 	/**

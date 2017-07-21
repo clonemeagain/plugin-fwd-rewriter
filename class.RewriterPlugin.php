@@ -37,7 +37,7 @@ class RewriterPlugin extends Plugin
      *
      * @var boolean
      */
-    const DUMPWHOLETHING = TRUE;
+    const DUMPWHOLETHING = FALSE;
 
     /**
      * Hook the bootstrap process, wait for tickets to be created.
@@ -151,8 +151,8 @@ class RewriterPlugin extends Plugin
             // also, how the fuck did I write that?
             // check out regexr.com and play till you get it working.. many complicated!
             // why don't we just match the email address, fuck the name!
-            if(preg_match_all('/From:(.*)(?: |<|;|>)([\w\d_\-\.]+@[\w\d_\-\.]+)(?:&|>| )/i', $matchable_body, $sender)){
-            //if (preg_match_all('/From:\s(?:.*>)?(.+)(?:.+?)(?:\s|<|&lt;)([\w\d_\-\.]+@[\w\d_\-\.]+)(?:&gt;|>)/i', $matchable_body, $sender)) {
+            if (preg_match_all('/From:(.*)(?: |<|;|>)([\w\d_\-\.]+@[\w\d_\-\.]+)(?:&|>| )/i', $matchable_body, $sender)) {
+                // if (preg_match_all('/From:\s(?:.*>)?(.+)(?:.+?)(?:\s|<|&lt;)([\w\d_\-\.]+@[\w\d_\-\.]+)(?:&gt;|>)/i', $matchable_body, $sender)) {
                 return $this->rewrite($vars, $sender);
             } elseif (self::DEBUG) {
                 // Disaster, it is definitely a forwarded message, yet we can't find the details inside it.
@@ -173,8 +173,115 @@ class RewriterPlugin extends Plugin
                 return $this->rewrite($vars, $sender);
             }
         }
-        // not a match if it reaches here. 
-        //todo: arbitrary rewriting!
+        
+        // See if admin has added any text rewriting rules:
+        if ($rules = $this->getConfig()->get('email-rewrite')) {
+            $this->rewriteEmail($vars, $rules);
+        }
+        if ($rules = $this->getConfig()->get('text-rewrite')) {
+            $this->rewriteText($vars, $rules);
+        }
+        if ($rules = $this->getConfig()->get('regex-rewrite')) {
+            $this->rewriteTextRegex($vars, $rules);
+        }
+    }
+
+    /**
+     * A little more powerful..
+     * it's assumed you know what you're doing when you write a regex.
+     * Let's get creative.
+     *
+     * @param array $vars
+     * @param array $rules
+     */
+    private function rewriteTextRegex($vars, $rules)
+    {
+        $needles = $replacements = array();
+        
+        foreach (explode("\n", $rules) as $rule) {
+            list ($find, $replace) = explode(':', $rule);
+            if (! $find) {
+                // skip blank patterns.
+                continue;
+            }
+            
+            $replace = $replace ?: ''; // Replace things with nothing if no replacement string.
+                                       
+            // validate pattern before run
+            if (! @preg_match($find, null) === false) {
+                $this->log("Pattern $find wasn't a valid regex.");
+                continue;
+            }
+            
+            $needles[] = $find;
+            $replacements[] = $replace;
+        }
+        if (self::DUMPWHOLETHING) {
+            $this->log("Going to get brutal with regex against the ticket.. hold onto your hat!");
+            print_r($needles);
+            print_r($replacements);
+        }
+        
+        foreach ($vars as $key => $val) {
+            if ($val instanceof ThreadEntryBody) {
+                // ie: $vars['message']
+                // This will work regardless of the type, ie: Text/Html
+                $new_val = preg_replace($needles, $replacements, (string) $val->body);
+                // preg_replace error value is null, so if we don't have an error, assume it worked:
+                $vars[$key]->body = $new_val ?: $val->body;
+            } elseif (is_string($val)) {
+                // we can work with text:
+                $new_val = preg_replace($needles, $replacements, $val);
+                $vars[$key] = $new_val ?: $val;
+            }
+            // TODO: Decide how deep the rabbit hole we want to go..
+            // attachments/recipients/etc are in an array
+        }
+        
+        if (self::DUMPWHOLETHING) {
+            $this->log("New vars:");
+            print_r($vars);
+        }
+    }
+
+    private function rewriteText(&$vars, &$rules, $type = 'text')
+    {
+        foreach (explode("\n", $rules) as $rule) {
+            list ($find, $replace) = explode(':', $rule); // PHP 5/7 inverts the order of applying this.. FFS, why?
+            
+            if (! $find)
+                continue;
+            
+            if (self::DEBUG)
+                $this->log("Using $find => $replace text rule on ticket with subject $subject\n");
+            
+            if ($vars['message'] instanceof ThreadEntryBody && stripos($vars['message']->body, $find) !== FALSE) {
+                $vars['message']->body = str_ireplace($find, $replace, (string) $vars['message']->body);
+            }
+            if (stripos($vars['subject'], $find) !== FALSE) {
+                $vars['subject'] = str_ireplace($find, $replace, $vars['subject']);
+            }
+        }
+    }
+
+    private function rewriteEmail(&$vars, &$rules)
+    {
+        foreach (explode("\n", $rules) as $rule) {
+            list ($find, $replace) = explode(':', $rule); // PHP 5/7 inverts the order of applying this.. FFS, why?
+            
+            if (! $find)
+                continue;
+            
+            if (self::DEBUG)
+                $this->log("Using $find => $replace email rule on ticket with subject $subject\n");
+            
+            {
+                if (stripos($vars['email'], $find) !== FALSE) {
+                    $vars['email'] = str_ireplace($find, $replace, $vars['email']);
+                }
+                break;
+            }
+        }
     }
 
     /**
@@ -204,7 +311,7 @@ class RewriterPlugin extends Plugin
         $original_email = array_pop($matches[2]);
         
         $original_name = strip_tags($original_name); // there's a chance we captured some HTML with the name.. strip it.
-        
+                                                     
         // The current details of the soon-to-be-ticket
         $current_sender_name = $vars['name'];
         $current_sender_email = $vars['email']; // We don't validate email because User::fromVars will do it
@@ -228,7 +335,7 @@ class RewriterPlugin extends Plugin
             'email' => $original_email
         ));
         if (self::DUMPWHOLETHING) {
-            print "Attempted to make/find user for $original_name and $original_email\n";
+            $this->log("Attempted to make/find user for $original_name and $original_email");
             print_r($user); // DEBUG
         }
         if (! $user instanceof User) {
@@ -252,7 +359,7 @@ class RewriterPlugin extends Plugin
      * Logging function,
      * Ensures we have permission to log before doing so
      *
-     * Logs to the Admin logs, and to the webserver logs.
+     * Attempts to log to the Admin logs, and to the webserver logs if debugging is enabled.
      *
      * @param string $message
      */
@@ -261,19 +368,11 @@ class RewriterPlugin extends Plugin
         global $ost;
         
         // hmm.. might not be available if bootstrapping isn't finished.
-        if (! $ost instanceof osTicket) {
-            $ost = new osTicket();
-        }
-        
-        static $can_log;
-        if (! isset($can_log))
-            $can_log = $this->getConfig()->get('log');
-        
-        if ((self::DEBUG || $can_log) && $message) {
+        if ((self::DEBUG || $this->getConfig()->get('log')) && $message) {
             $ost->logDebug("RewritePlugin", $message);
-            if (self::DEBUG)
-                error_log("osTicket RewritePlugin: $message");
         }
+        if (self::DEBUG)
+            error_log("osTicket RewritePlugin: $message");
     }
 
     /**

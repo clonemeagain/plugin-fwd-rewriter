@@ -111,9 +111,10 @@ class RewriterPlugin extends Plugin
             return;
         }
         
-        // Build a fancy regex to match domain names
+        // Build a fancy regex to match domain names, restricts the people who can forward
         // Will likely break horribly if they put anything but commas in there.
         // TODO: Make admin option simply "the regex"..? could be good.
+        // Alternately, it would mean every osTicket admin would have to learn Regular Expressions..
         $restrict_forwarding_to_these_domains = $this->getConfig()->get('domains');
         if (strlen($restrict_forwarding_to_these_domains)) {
             // if no domains are specified, we just allow all domains to forward..
@@ -140,9 +141,10 @@ class RewriterPlugin extends Plugin
             // Attempting to find this from the body text:
             // // From: SomeName &lt;username@domain.name&gt;
             // The body will be html gibberish though.. have to decode it before checking
-            if (self::DUMPWHOLETHING)
-                print "Message as parser sees it: \n$message_body\n";
+            // if (self::DUMPWHOLETHING)
+            // print "Message as parser sees it: \n$message_body\n";
             
+            // We'll start with the regex check, if it works, we get the name & email in one go:
             if ($sender = $this->optimisticSearch($message_body)) {
                 $this->rewrite($vars, $sender);
             } else {
@@ -152,13 +154,16 @@ class RewriterPlugin extends Plugin
                 if ($sender) {
                     $this->rewrite($vars, $sender);
                 } else {
-                    // Disaster, it is definitely a forwarded message, yet we can't find the details inside it.
+                    // Disaster, it is a forwarded message, yet we can't find the details inside it.
                     if (self::DEBUG)
-                        print "We made it to failure.. woo. :-(\n\n";
+                        print "Failure.. boo. :-(\n\n";
                     $this->log("Unable to rewrite $subject, No 'From: {name} <{email}>' found.");
                 }
             }
-        } elseif ($this->getConfig()->get('drupal') && preg_match('/sent a message using the contact form at/i', $message_body)) {
+        }
+        
+        // Test for Drupal messages:
+        if ($this->getConfig()->get('drupal') && preg_match('/sent a message using the contact form at/i', $message_body)) {
             
             // The message body indicates it could be sent from a Drupal /contact form
             // Luckily the default is PlainText (for Drupal 7 and lower at least)
@@ -174,13 +179,15 @@ class RewriterPlugin extends Plugin
             }
         }
         
-        // See if admin has added any text rewriting rules:
+        // See if admin has added any email rewriting rules:
         if ($rules = $this->getConfig()->get('email-rewrite')) {
             $this->rewriteEmail($vars, $rules);
         }
+        // See if admin has added any text rewriting rules:
         if ($rules = $this->getConfig()->get('text-rewrite')) {
             $this->rewriteText($vars, $rules);
         }
+        // See if admin has added any regex rewriting rules:
         if ($rules = $this->getConfig()->get('regex-rewrite')) {
             $this->rewriteTextRegex($vars, $rules);
         }
@@ -257,7 +264,7 @@ class RewriterPlugin extends Plugin
                 print "DS: Checking node with text: " . $node->nodeValue . "\n";
             
             // Find any email addresses.. From: Name <email@address.org> should SHOULD be fairly near the top
-            $possibles = $this->findAddressesInText($node->nodeValue);
+            $possibles = $this->findEmailAddresses($node->nodeValue);
             
             // Depending on how many email addresses we found in that block, it could be the bit we're after!
             if (count($possibles) > 0) {
@@ -267,24 +274,22 @@ class RewriterPlugin extends Plugin
                 
                 // Go over each email address, check each line of text that we found the addresses in:
                 foreach ($possibles as $email) {
-                    if (self::DUMPWHOLETHING)
-                        print "DS: Checking lines for email: $email\n";
                     foreach ($lines as $line) {
                         if (self::DUMPWHOLETHING)
-                            print "DS: Looking in line:  $line\n";
+                            print "DS: Looking for $email in line:  $line\n";
                         // Let's find the "From: " bit in that line that has the email address, then call the line a winner.
-                        if (stripos($line, 'From:') !== FALSE) {
+                        if (stripos($line, 'From:') !== FALSE && stripos($line, $email) !== FALSE) {
                             if (self::DUMPWHOLETHING) {
-                                print "DS: Found match for /From:.*$email/ \n";
+                                print "DS: Found match for /From:.*$email/ \n"; // pretty sure two stripos's is faster than preg_match.. dunno
                             }
-                            // sold!
+                            // Success, this line has the text we want.
                             // Need the text after From as the sender, and we already know the address.
                             $name = str_replace(array(
                                 '<',
                                 '>'
                             ), '', strip_tags($line)); // is strip_tags what we want?
-                            $name = str_replace('From:', '', $name);
-                            $name = str_replace($email, '', $name);
+                            $name = str_replace('From:', '', $name); // remove From: from the line
+                            $name = str_replace($email, '', $name); // remove the email address from the line
                             
                             if (self::DUMPWHOLETHING)
                                 print "Found our guy? name: $name with email: $email\n";
@@ -304,7 +309,7 @@ class RewriterPlugin extends Plugin
             return FALSE;
         }
         
-        // we need to basically recreate the structure of the $sender array, or you know, rewrite the rewrite function
+        // recreate the structure of the output of preg_match_all
         // $matches[0][..] == 'Pattern matches, not the capture groups.. so, skip this'
         // $matches[1][..] == 'Names'
         // $matches[2][..] == 'Email addresses'
@@ -325,7 +330,7 @@ class RewriterPlugin extends Plugin
 
     /**
      * Finds any email addresses in a piece of text,
-     * Returns as an array of those addresses.
+     * Returns an array of those addresses.
      *
      * @see https://stackoverflow.com/a/3901303
      * @see https://stackoverflow.com/a/8131211
@@ -334,7 +339,7 @@ class RewriterPlugin extends Plugin
      * @param string $text
      * @return mixed
      */
-    private function findAddressesInText($text)
+    private function findEmailAddresses($text)
     {
         $matches = array();
         $matches[0] = array();
@@ -352,7 +357,8 @@ class RewriterPlugin extends Plugin
 
     /**
      * A little more powerful..
-     * it's assumed you know what you're doing when you write a regex.
+     * It's assumed you know what you're doing when you write a regex.
+     *
      * Let's get creative.
      *
      * @param array $vars
@@ -362,7 +368,7 @@ class RewriterPlugin extends Plugin
     {
         $needles = $replacements = array();
         
-        foreach (explode("\n", $rules) as $rule) {
+        foreach (explode(PHP_EOL, $rules) as $rule) {
             list ($find, $replace) = explode(':', $rule);
             if (! $find) {
                 // skip blank patterns.
@@ -399,13 +405,23 @@ class RewriterPlugin extends Plugin
                 $vars[$key] = $new_val ?: $val;
             }
             // TODO: Decide how deep the rabbit hole we want to go..
-            // attachments/recipients/etc are in an array
+            // attachments/recipients/etc are in a sub array
         }
     }
 
-    private function rewriteText(&$vars, &$rules, $type = 'text')
+    /**
+     * Rewrite Text things, like, the subject/body
+     *
+     * Simple find & replace implementation.
+     *
+     * @param array $vars
+     *            (the values osTicket constructed)
+     * @param string $rules
+     *            (the find:replace pairs admin entered, \n seperating each rule)
+     */
+    private function rewriteText(&$vars, &$rules)
     {
-        foreach (explode("\n", $rules) as $rule) {
+        foreach (explode(PHP_EOL, $rules) as $rule) {
             list ($find, $replace) = explode(':', $rule); // PHP 5/7 inverts the order of applying this.. FFS, why?
             
             if (! $find)
@@ -425,7 +441,7 @@ class RewriterPlugin extends Plugin
 
     private function rewriteEmail(&$vars, &$rules)
     {
-        foreach (explode("\n", $rules) as $rule) {
+        foreach (explode(PHP_EOL, $rules) as $rule) {
             list ($find, $replace) = explode(':', $rule); // PHP 5/7 inverts the order of applying this.. FFS, why?
             
             if (! $find)
@@ -492,22 +508,25 @@ class RewriterPlugin extends Plugin
         $vars['name'] = $original_name;
         $vars['email'] = $original_email;
         
-        // $user = User::fromVars(array(
-        // 'name' => $original_name,
-        // 'email' => $original_email
-        // ));
-        // if (self::DUMPWHOLETHING) {
-        // $this->log("Attempted to make/find user for $original_name and $original_email");
-        // print_r($user); // DEBUG
-        // }
-        // if (! $user instanceof User) {
-        // Was denied/spammer?
-        // We can't use the $user object if it's not a User!
-        // Also fails if Registration (user/pass) is required for users and the new one isn't actually a user.
-        // $this->log("Unable to rewrite to this User $original_email, as we are unable to make an account for them.");
-        // return;
-        // }
-        // $vars['uid'] = $user->getId();
+        $user = User::fromVars(array(
+            'name' => $original_name,
+            'email' => $original_email
+        ));
+        if (self::DUMPWHOLETHING) {
+            $this->log("Attempted to make/find user for $original_name and $original_email");
+            print_r($user); // DEBUG
+        }
+        if (! $user instanceof User) {
+            // Was denied/spammer?
+            // We can't use the $user object if it's not a User!
+            // Also fails if Registration (user/pass) is required for users and the new one isn't actually a user.
+            $this->log("Unable to rewrite to this User $original_email, as we are unable to make an account for them.");
+            // put it back!
+            $vars['name'] = $current_sender_name;
+            $vars['email'] = $current_sender_email;
+            return;
+        }
+        $vars['uid'] = $user->getId();
         $msg = "Rewrote ticket details: $current_sender_name -> {$original_name}";
         $this->log($msg);
         if (self::DEBUG)

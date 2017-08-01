@@ -95,7 +95,7 @@ class RewriterPluginConfig extends PluginConfig
             'domains' => new TextareaField(array(
                 'label' => $__('Rewritable Domains'),
                 'placeholder' => $__('Enter your trusted domain names, ie: company.com.tld'),
-                'hint' => $__("Separate with a comma if more than one required, not email addresses, full domains (the part after @)."),
+                'hint' => $__("Separate with a comma if more than one required, not email addresses, full domains (the part after @), if empty, Everyone is allowed to forward."),
                 'configuration' => array(
                     'html' => FALSE
                 )

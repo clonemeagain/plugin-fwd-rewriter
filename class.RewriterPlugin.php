@@ -552,7 +552,7 @@ class RewriterPlugin extends Plugin
         global $ost;
         
         // hmm.. might not be available if bootstrapping isn't finished.
-        if ($ost instanceof osticket && (self::DEBUG || $this->getConfig()->get('log')) && $message) {
+        if ($ost instanceof osTicket && (self::DEBUG || $this->getConfig()->get('log')) && $message) {
             $ost->logDebug("RewritePlugin", $message);
         }
         if (self::DEBUG)

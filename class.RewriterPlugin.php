@@ -37,7 +37,7 @@ class RewriterPlugin extends Plugin
      *
      * @var boolean
      */
-    const DUMPWHOLETHING = TRUE;
+    const DUMPWHOLETHING = FALSE;
 
     /**
      * Hook the bootstrap process, wait for tickets to be created.
@@ -552,7 +552,7 @@ class RewriterPlugin extends Plugin
         global $ost;
         
         // hmm.. might not be available if bootstrapping isn't finished.
-        if ((self::DEBUG || $this->getConfig()->get('log')) && $message) {
+        if ($ost instanceof osticket && (self::DEBUG || $this->getConfig()->get('log')) && $message) {
             $ost->logDebug("RewritePlugin", $message);
         }
         if (self::DEBUG)

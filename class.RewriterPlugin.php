@@ -89,19 +89,6 @@ class RewriterPlugin extends Plugin {
       return;
     }
 
-    // Retrieve the text from the ThreadEntryBody, as per v1.10
-    $message_body = $vars['message']->getClean();
-
-    // Could trim in regex.. but easier to trim here.
-    // Only works if the Issue Summary field is a "Short Answer" textbox.. not a choice. :-|
-    $subject = trim($vars['subject']);
-    if (! $subject) {
-      if (self::DEBUG) {
-        $this->log("Message had no subject, ignoring.");
-      }
-      return;
-    }
-
     $restrict_forwarding_to_these_domains = $this->getConfig()->get('domains');
     // if no domains are specified, we just allow NO domains to forward..
     if (strlen($restrict_forwarding_to_these_domains)) {
@@ -159,6 +146,19 @@ class RewriterPlugin extends Plugin {
         print "Sender wasn't in list of allowed domains.";
       }
       else {
+
+        // Retrieve the text from the ThreadEntryBody, as per v1.10
+        $message_body = $vars['message']->getClean();
+
+        // Could trim in regex.. but easier to trim here.
+        // Only works if the Issue Summary field is a "Short Answer" textbox.. not a choice. :-|
+        $subject = trim($vars['subject']);
+        if (! $subject) {
+          if (self::DEBUG) {
+            $this->log("Message had no subject, ignoring.");
+          }
+          return;
+        }
 
         // Need to find if the message was forwarded.
         // Check the subject for "Fwd: ", "[Fwd:...]", "... (fwd)" as per http://stackoverflow.com/a/4743303

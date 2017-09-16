@@ -32,6 +32,9 @@ I suggest at least your "domain name", otherwise the forwarding detector will ig
 
 To start, you should probably enable logging. You can disable when you're done testing. (While code is prerelease, DEBUG has been left on, so you can see many log entries in your webserver logs, simply change that to FALSE in class.RewriterPlugin.php to stop them). 
 
+### Delete Attachments:
+A single checkbox that removes all attachments for inbound emails. 
+
 ### Drupal Contact Parser
 If you use Drupal on any external websites, and don't use an API to talk to osTickets (ie, the Contact form simply emails your ticket system), you can use the Drupal Contact Parser to rewrite those inbound emails back into the original senders, so tickets are as if they were created by the original sender.  
   

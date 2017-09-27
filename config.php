@@ -79,6 +79,17 @@ class RewriterPluginConfig extends PluginConfig {
               'hint' => $__(
                 "Enable to aid debugging, logs appear in Admin -> Dashboard -> System Logs")
           )),
+        'domains' => new TextareaField(
+          array(
+              'label' => $__('Forward Rewritable Domains'),
+              'placeholder' => $__(
+                'Enter your trusted domain names, ie: company.com.tld'),
+              'hint' => $__(
+                "Separate with a comma if more than one required, not email addresses, full domains (the part after @), if empty, Nobody is allowed to forward."),
+              'configuration' => array(
+                  'html' => FALSE
+              )
+          )),
         'note' => new BooleanField(
           array(
               'default' => TRUE,
@@ -92,27 +103,6 @@ class RewriterPluginConfig extends PluginConfig {
               'label' => $__('Note Text'),
               'hint' => $__('This get\'s prepended to the message body')
           )),
-        'delete-attachments' => new BooleanField(
-          array(
-              'default' => FALSE,
-              'label' => $__('Delete all attachments'),
-              'hint' => $__('Removes attachments from incoming emails')
-          )),
-        'di' => new SectionBreakField(
-          array(
-              'label' => 'Permission'
-          )),
-        'domains' => new TextareaField(
-          array(
-              'label' => $__('Rewritable Domains'),
-              'placeholder' => $__(
-                'Enter your trusted domain names, ie: company.com.tld'),
-              'hint' => $__(
-                "Separate with a comma if more than one required, not email addresses, full domains (the part after @), if empty, Nobody is allowed to forward."),
-              'configuration' => array(
-                  'html' => FALSE
-              )
-          )),
         'dr' => new SectionBreakField(
           array(
               'label' => 'Drupal Contact Parser'
@@ -124,6 +114,24 @@ class RewriterPluginConfig extends PluginConfig {
               'hint' => $__(
                 "Drupal sends specific email formats that we can look for.")
           )),
+        'dsf' => new SectionBreakField(
+          array(
+              'label' => $__('Attachment Deletion Options')
+          )),
+        'delete-attachments' => new BooleanField(
+          array(
+              'default' => FALSE,
+              'label' => $__('Delete all attachments'),
+              'hint' => $__('Removes all attachments from all incoming emails.')
+          )),
+        'delete-for-departments' => new TextboxField(
+          array(
+              'label' => $__('Purge email attachments for a department.'),
+              'default' => FALSE,
+              'hint' => $__(
+                "Enter the name of the department or it's ID number to purge incoming email attachments for that department (multiple, seperate with commas).")
+          )),
+
         'sba' => new SectionBreakField(
           array(
               'label' => $__(

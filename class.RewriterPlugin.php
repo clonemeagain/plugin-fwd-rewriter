@@ -35,7 +35,7 @@ class RewriterPlugin extends Plugin {
    *
    * @var boolean
    */
-  const DUMPWHOLETHING = FALSE;
+  const DUMPWHOLETHING = TRUE;
 
   /**
    * Hook the bootstrap process, wait for tickets to be created. Run on every
@@ -54,8 +54,12 @@ class RewriterPlugin extends Plugin {
       function ($obj, &$vars) {
         if (self::DUMPWHOLETHING) {
           $this->log("Received signal ticket.create.before");
-          print_r($obj);
-          print_r($vars);
+          if (function_exists('xdebug_var_dump')) { // shouldn't be enabled on prod, but if it is, and DUMPWHOLETHING is enabled, then woo:
+            xdebug_break();
+          }
+          else {
+            print_r($vars);
+          }
         }
         // Only email would send a mail ID.. right? (API can simply set the sender's email manually, the web isn't forwarding.. )
         if (isset($vars['mid'])) {
@@ -65,6 +69,32 @@ class RewriterPlugin extends Plugin {
           $this->log("Ignoring invalid ticket source.");
         }
       });
+
+    // See if admin wants to remove all attachments:
+    if ($this->getConfig()->get('delete-attachments')) {
+      // Listen to the mail.processed signal, and simply drop any attachments..
+      // if you wanted to delete all attachments, but didn't want to turn them off
+      // in the admin config for some reason..
+      // Note: Haven't found any signals for piped email..
+      // Really wish there was one before the attachments were downloaded.
+      // apparently not.
+      Signal::connect('mail.processed',
+        function ($mf, &$vars) {
+          $this->log("All Attachments Purged, as instructed.");
+          $vars['attachments'] = array();
+        });
+    }
+    elseif ($this->getConfig()->get('delete-for-departments')) {
+      // Little bit tricker, we need to wait for the thread to be created for the ticket,
+      // check it's department, if known, match it with the admin specified departments
+      // then purge any attachments found.
+      Signal::connect('threadentry.created',
+        function ($entry) {
+          $this->log(
+            "Received threadentry.created signal, told to check for departments.");
+          $this->purgeAttachmentsByDepartment($entry);
+        });
+    }
   }
 
   /**
@@ -127,11 +157,6 @@ class RewriterPlugin extends Plugin {
     if ($rules = $this->getConfig()->get('regex-rewrite')) {
       $this->rewriteTextRegex($vars, $rules);
     }
-
-    // See if admin wants to remove all attachments:
-    if ($this->getConfig()->get('delete-attachments')) {
-      $vars['attachments'] = array();
-    }
   }
 
   private function rewriteForward($vars, $restrict_forwarding_to_these_domains) {
@@ -143,7 +168,7 @@ class RewriterPlugin extends Plugin {
        str_replace(',', '|', $restrict_forwarding_to_these_domains) . ')/i';
     if (! preg_match($regex_of_allowed_domains, $vars['email'])) {
       if (self::DEBUG) {
-        print "Sender wasn't in list of allowed domains.";
+        $this->log("Sender wasn't in list of allowed domains.");
       }
       else {
 
@@ -154,9 +179,7 @@ class RewriterPlugin extends Plugin {
         // Only works if the Issue Summary field is a "Short Answer" textbox.. not a choice. :-|
         $subject = trim($vars['subject']);
         if (! $subject) {
-          if (self::DEBUG) {
-            $this->log("Message had no subject, ignoring.");
-          }
+          $this->log("Message had no subject, ignoring.");
           return;
         }
 
@@ -168,15 +191,14 @@ class RewriterPlugin extends Plugin {
            preg_match('/\(fwd\)$/i', $subject)) {
 
           // We have a forwarded message (according to the subject)
-          if (self::DEBUG)
-            $this->log("Matched forwarded subject: $subject");
+          $this->log("Matched forwarded subject: $subject");
 
-            // Have to find the original sender
-            // Attempting to find this from the body text:
-            // // From: SomeName &lt;username@domain.name&gt;
-            // The body will be html gibberish though.. have to decode it before checking
-            // if (self::DUMPWHOLETHING)
-            // print "Message as parser sees it: \n$message_body\n";
+          // Have to find the original sender
+          // Attempting to find this from the body text:
+          // // From: SomeName &lt;username@domain.name&gt;
+          // The body will be html gibberish though.. have to decode it before checking
+          // if (self::DUMPWHOLETHING)
+          // print "Message as parser sees it: \n$message_body\n";
 
 
           // We'll start with the regex check, if it works, we get the name & email in one go:
@@ -192,8 +214,6 @@ class RewriterPlugin extends Plugin {
             }
             else {
               // Disaster, it is a forwarded message, yet we can't find the details inside it.
-              if (self::DEBUG)
-                print "Failure.. boo. :-(\n\n";
               $this->log(
                 "Unable to rewrite $subject, No 'From: {name} <{email}>' found.");
             }
@@ -557,6 +577,106 @@ class RewriterPlugin extends Plugin {
       $admin_note = $this->getConfig()->get('note-text') . "\n\n";
       $vars['message']->prepend($admin_note); // Another reason to test for ThreadEntryBody, we can use it's methods!
     }
+  }
+
+  /**
+   * Tiny function that purges attachments for specified departments only
+   *
+   * @param ThreadEntry $entry
+   */
+  private function purgeAttachmentsByDepartment(ThreadEntry &$entry) {
+    $departments = $this->getConfig()->get('delete-for-departments');
+    $matchable_departments = (strpos($departments, ',') !== FALSE) ?
+    // many entered: fill an array with each name
+    explode(',', $departments) :
+    // one entered: make it an array anyway:
+    array(
+        $departments
+    );
+
+    $this->log(
+      "Purging attachments for departments: " .
+         print_r($matchable_departments, true));
+
+    // Get the ticket, to get the department
+    $ticket = $this->getTicket($entry);
+    if (! $ticket instanceof Ticket) {
+      $this->log("Unable to find/get ticket for thread");
+      return;
+    }
+    $ticket_department = $ticket->getDept();
+    if (! $ticket_department instanceof Dept) {
+      $this->log("Unable to find/get department for thread");
+      return;
+    }
+    $thread = $entry->getThread();
+    if (! $thread instanceof Thread) {
+      return;
+    }
+    // We have enough pieces, let's check the departments the admin specified:
+    foreach ($matchable_departments as $d) {
+      $this->log("Looking up department: $d");
+      if (is_string($d)) {
+        $dept_id = Dept::getIdByName($d);
+        $dept = Dept::lookup($dept_id);
+      }
+      else {
+        $dept = Dept::lookup($d);
+      }
+      if (! $dept instanceof Dept) {
+        $this->log("ERROR: unable to instantiate $d as department.");
+      }
+      if (self::DUMPWHOLETHING)
+        $this->log(
+          "Checking " . $dept->getName() . ' against . ' .
+             $ticket_department->getName());
+      if ($dept instanceof Dept && $dept->getId() == $ticket_department->getId()) {
+        $this->log("Going to delete the attachments from the thread..");
+
+        // Match, let's purge the attachments
+        foreach ($entry->getAttachments() as $att) {
+          if (! $att instanceof Attachment) {
+            $this->log("Error, unable to delete attachment");
+            continue;
+          }
+          $this->log("Deleting file attachment: " . $att->getFileName());
+          Attachment::objects()->filter(
+            array(
+                'file_id' => $att->getFileId()
+            ))
+            ->delete();
+        }
+
+        // Return early, in case the first matches, no need to instantiate the next Department.
+        return;
+      }
+    }
+  }
+
+  /**
+   * Fetches a ticket from a ThreadEntry Copied from mentioner plugin! :-)
+   *
+   * @param ThreadEntry $entry
+   * @return Ticket
+   */
+  private static function getTicket(ThreadEntry $entry) {
+    static $ticket;
+    if (! $ticket) {
+      // aquire ticket from $entry.. I suspect there is a more efficient way.
+      $ticket_id = Thread::objects()->filter(
+        [
+            'id' => $entry->getThreadId()
+        ])
+        ->values_flat('object_id')
+        ->first()[0];
+
+      // Force lookup rather than use cached data..
+      $ticket = Ticket::lookup(
+        array(
+            'ticket_id' => $ticket_id
+        ));
+    }
+    return $ticket;
   }
 
   /**

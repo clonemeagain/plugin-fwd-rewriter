@@ -166,12 +166,11 @@ class RewriterPlugin extends Plugin {
      * Idea is to remove the extraneous details of a message that is included before the 
      * reply separator for some reason. 
      * 
-     * @global OsticketConfig $cfg
      * @param ThreadEntry $entry
      */
     private function stripMetadata(ThreadEntry $entry) {
         if (!$entry instanceof MessageThreadEntry) {
-            return;
+            return; // don't need to strip from any other entry types
         }
         $body = $entry->getBody();
         $text = $body->getClean();
@@ -179,16 +178,17 @@ class RewriterPlugin extends Plugin {
         // Break the text into manageable chunks:
         $searchable = array();
         if ($body instanceof HtmlThreadEntryBody) {
-            // ok, fine, split by <br> then fine. 
-            $searchable = explode("<br />", str_replace('<br>', '<br />', $text));
+            // ok, fine, split by <br>
             $packer     = "<br />";
+            $searchable = explode($packer, str_replace('<br>', $packer, $text));
         } else {
             // Text can be split on newlines.
-            $searchable = explode("\n", $text);
             $packer     = "\n";
+            $searchable = explode($packer, $text);
         }
         // Could search for a date, or every email address that can send emails.. hmm
         foreach (array_reverse($searchable) as $idx => $line) {
+            //TODO: Get an international version of matching regex..
             if (preg_match('/On.+wrote:/i', $line)) {
                 // drop everything from len-idx+1 & repack back where we found it:
                 $body->body = implode($packer, array_slice($searchable, 0, count($searchable) - ++$idx));
@@ -508,7 +508,8 @@ class RewriterPlugin extends Plugin {
 
             if (self::DEBUG)
                 $this->log(
-                        "Using $find => $replace email rule on ticket with subject $subject\n"); {
+                        "Using $find => $replace email rule on ticket with subject $subject\n");
+            {
                 if (stripos($vars['email'], $find) !== FALSE) {
                     $vars['email'] = str_ireplace($find, $replace, $vars['email']);
                 }

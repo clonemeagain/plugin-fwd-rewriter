@@ -35,7 +35,7 @@ class RewriterPlugin extends Plugin {
    *
    * @var boolean
    */
-  const DUMPWHOLETHING = TRUE;
+  const DUMPWHOLETHING = FALSE;
 
   /**
    * Hook the bootstrap process, wait for tickets to be created. Run on every
@@ -95,7 +95,7 @@ class RewriterPlugin extends Plugin {
           $this->purgeAttachmentsByDepartment($entry);
         });
     }
-  }
+ }
 
   /**
    * Takes an array of variables and checks to see if it matches the normal
@@ -143,6 +143,10 @@ class RewriterPlugin extends Plugin {
         $message_body, $sender)) {
         $this->rewrite($vars, $sender);
       }
+    }
+    // See if Zendesk Chat emails need to be rewritten:
+    if($this->getConfig()->get('zendesk') && $vars['email'] == 'noreply@zopim.com'){
+      $this->rewriteZendesk($vars);
     }
 
     // See if admin has added any email rewriting rules:
@@ -356,6 +360,36 @@ class RewriterPlugin extends Plugin {
 
     return $sender;
   }
+
+ private function rewriteZendesk(&$vars){
+    $text = $vars['message']->getClean();
+    // Find the original sender
+    $emails = $this->findEmailAddresses($text);
+    // how many can there be?
+    // Let's assume the last one..
+    $senders_email = array_pop($emails);
+    // Find the original name:
+    // Delete any new lines and strip html:
+    $lineless = str_replace("\n",'', strip_tags($text));
+    // Name exists between NAME & EMAIL, like NAMEJames SmithEMAIL etc, so
+    // we just replace the whole piece of text with whatever is between those:
+    $senders_name = preg_replace("/.*NAME([a-z' ]+)EMAIL.*/i","\$1",$lineless);
+    if(!$senders_name){
+      $senders_name = $senders_email; // make do..
+    }
+
+    // Now we can rewrite the sender
+      $sender = array(
+          array(),
+          array(
+              trim($senders_name)
+          ),
+          array(
+              trim($senders_email)
+          )
+      );
+    $this->rewrite($vars,$sender);
+ }
 
   /**
    * Finds any email addresses in a piece of text, Returns an array of those

@@ -105,14 +105,20 @@ class RewriterPluginConfig extends PluginConfig {
           )),
         'dr' => new SectionBreakField(
           array(
-              'label' => 'Drupal Contact Parser'
+              'label' => 'Explicitly defined parsers'
           )),
         'drupal' => new BooleanField(
           array(
               'default' => TRUE,
               'label' => $__('Rewrite Drupal Contact Form emails'),
               'hint' => $__(
-                "Drupal sends specific email formats that we can look for.")
+                "Rewrite Drupal contact-form emails.")
+          )),
+        'zendesk' => new BooleanField(
+          array(
+            'default' => FALSE,
+            'label' => $__('Rewrite Zendesk contact emails'),
+            'hint' => $__('Rewrite Zendesk chat notification emails.')
           )),
         'dsf' => new SectionBreakField(
           array(
